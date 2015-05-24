@@ -1,0 +1,171 @@
+---
+title: "Practical Machine Learning"
+author: "Zeeshan Abbasi"
+date: "Sunday, May 24, 2015"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache=TRUE)
+```
+#Executive Summary#
+
+The data from the various subjects was collected while the they were performing execises so that the quality of their training could be evaluated and future sessions could be catagorised based on a trained model.
+Out task is to train a model from the given data "pml-training.csv" and then predict the classes based on the test data "pml-testing.csv".
+
+#Methodology#
+
+I will be using the R program as prescribed. I have a Windows machine so I will use the compatible x64 bit binary as the training dataset is rather large. First I plan to inspect the data and see if there are any obvious issues and do a thorough cleansing process that will include removing any columns that have more that 70% of the values missing or invalid. The next step will be to divide the data into a training set and test set with the ratio of 70:30 training and test respectively. There is also data that will be incorrectly identified by the R program while loading so I will have to make sure that the data is correctly read and classes are identified correctly.
+Once the data is available and is separated in Training and Test set I will train three models Support Vector Machines (SVM), Random Forests (RF), Stochastic Gradient Boosting (GBM) with 5 repeats of 2-fold cross validation. Once the models are trained their accuracy will be measured against the Test sets and the best performing model will be chosen and used for the final predictions. The data comparison will include confusion matrix, box plots and dot plots.
+Once again on the assignment test data (Final predictions to be submitted) I will have to ignore the unused columns and I will have to ensure that the classes are correctly identified as the assignment test data is small and might be incorrectly identified by the R program.
+
+#The Program (First Pass)#
+
+When I started training the three models (SVM, GBM, RF) using the caret package it took several hours to complete the computation and the results were decisive. The Random Forest model outperformed the other two and I got my results as expected. Then I opted to optimize my program so that it takes less time and the code is cleaner in the second pass. 
+
+***I could not add the code for the first run due to not being able to run it in the RStudio as I did not understand the difference between RStudio and RGui and that computation is done in RGui where I could not run MarkDown. A second run of that code will take hours.***
+
+**Plots comparing the models from the caret package.**
+
+**Dot Plot**
+
+![Dot plot](Plot1.JPG)
+
+**Box Plot**
+
+![Box plot](Plot2.JPG)
+
+**Confusion Matrix**
+
+**GBM**
+
+![GBM](Confusion_GBM.JPG)
+
+**Random Forest**
+
+![Random Forest](Confusion_RF.JPG)
+
+**SVM**
+
+![SVM](Confusion_SVM.JPG)
+
+#The Program (Second Pass)#
+
+I set about optimizing the learning mechanism and decided to speed up the process. The idea I had in mind was to create multiple models without using caret package as it seemed that the calculations are much faster by many order of magnitude and not using complex cross validation parameters. I would then have attempted to ensemble and used the three models to provide improved predictions. I would also have manually adjusted the parameters to get to the best possible scores if there was a need but it turns out that the Random Forest using the "randomForest" function and SVM using the "svm" function were exceptionally fast and results were very close to the original predictions without spending training time with complex strategies i.e. ensemble and complex cross validation. I decided to use this approach as my final program due to its speed and simplicity. I did not use GBM in the second phase as it was a bit more complex and I only needed one more than the Random Forest method for comparison only.
+
+#Program Code#
+
+##Setup##
+
+**Clearing the console window**
+```{r results='hide', message=FALSE, warning=FALSE}
+rm(list=ls(all=TRUE)) ##clear all commands
+```
+
+**Loading libraries**
+```{r results='hide', message=FALSE, warning=FALSE}
+library(kernlab)
+library(caret)
+library(e1071)
+library(randomForest)
+```
+
+##Data setup##
+
+**Loading training data**
+```{r results='hide', message=FALSE, warning=FALSE}
+data <- read.csv("D:\\Course\\R\\pml-training.csv", header=TRUE, na.strings=c("NA",""))
+```
+**Setting the classification data**
+```{r results='hide', message=FALSE, warning=FALSE}
+classe <- data["classe"]
+```
+
+**Removing columns with 50% blank/null entries**
+```{r results='hide', message=FALSE, warning=FALSE}
+notNullCols <-  data[,colSums(is.na(data)) < nrow(data) * 0.5]
+```
+
+**Removing the X column as it was causing the Random Forest to fail and is not needed and removing class predicton column**
+```{r results='hide', message=FALSE, warning=FALSE}
+predictors = notNullCols[,-which(names(notNullCols) %in% c("X","classe"))]
+```
+
+**Read csv training data file while setting some variables as numeric due to auto integer conversion from numeric**
+```{r results='hide', message=FALSE, warning=FALSE}
+testData <- read.csv("D:\\Course\\R\\pml-testing.csv", header=TRUE, na.strings=c("NA",""), colClasses=c("magnet_dumbbell_z"="numeric","magnet_forearm_y"="numeric","magnet_forearm_z"="numeric")) 
+```
+
+**Removing columns not used in training data**
+```{r results='hide', message=FALSE, warning=FALSE}
+finalTestData <- testData[,which(names(testData) %in% names(predictors))]
+```
+
+**Correcting factor levels as it was giving errors on the following columns**
+```{r results='hide', message=FALSE, warning=FALSE}
+levels(finalTestData$cvtd_timestamp) <- levels(predictors$cvtd_timestamp)
+levels(finalTestData$new_window) <- levels(predictors$new_window)
+```
+
+**Creating the final data frame for training**
+```{r results='hide', message=FALSE, warning=FALSE}
+dataSet <- data.frame(classe, predictors)
+```
+
+**Setting seed**
+```{r results='hide', message=FALSE, warning=FALSE}
+set.seed(777)
+```
+
+**Creating training and test data sets**
+```{r results='hide', message=FALSE, warning=FALSE}
+inTrain <- createDataPartition(y=dataSet$classe, p=0.7)[[1]]
+
+training <- dataSet[inTrain,]
+
+testing <- dataSet[-inTrain,]
+```
+
+##Training##
+
+**Training the SVM model**
+```{r results='hide', message=FALSE, warning=FALSE}
+modelSvm <- svm(classe~., data=training, type="C-classification")
+```
+
+**Training the RF model**
+```{r results='hide', message=FALSE, warning=FALSE}
+modelRf <- randomForest(classe ~ ., data=training, keep.forest=TRUE, importance=TRUE, test=testing)
+```
+
+##Model performance##
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+testRfPrediction <- predict(modelRf, testing)
+testSvmPrediction <- predict(modelSvm, testing)
+```
+
+**RF Performance**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+confusionMatrix(testing$classe, testRfPrediction)
+```
+
+**SVM Performance**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+confusionMatrix(testing$classe, testSvmPrediction)
+```
+
+##Prediction##
+
+**Predicting using RF model**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+predict(modelRf, finalTestData)
+```
+
+**Predicting using SVM model**
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+predict(modelSvm, finalTestData)
+```
+
+#Conclusion#
+
+My conclusion from this exercise is that sometimes the simplest of technique is sufficient and the complexity should be increased gradually if there is a need. I also learned that not all models perform well for all problems, for the given problem SVM performed poorly but was quicker to train while Random Forest was the slowest specially with 3 repeats of 10 fold cross validation the machine was busy processing for more than 3 hours so I decided to terminate the process. Another import lesson was data cleansing process as that seemed be the most time consuming part of this exercise. Correct data cleansing approach is vital to a successfully trained model. I was also planning to remove low ranked predictors and running PCA to reduce the inputs further but there was a shortage of time and expertise moreover the model was working as expected resulting in all correct predictions.
